@@ -2,7 +2,7 @@ import validator from "validator";
 import userModel from "../models/userModel.js";
 import bcrypt from "bcrypt";
 import jwt from "jsonwebtoken";
-import {v2 as cloudinary} from 'cloudinary'
+import { v2 as cloudinary } from 'cloudinary'
 import doctorModel from "../models/doctorModel.js";
 import appointmentModel from "../models/AppointmentModel.js";
 import Stripe from 'stripe';
@@ -135,7 +135,7 @@ const forgotPassword = async (req, res) => {
 
     // Generate 6-digit OTP
     const otp = crypto.randomInt(100000, 999999).toString();
-    
+
     // Store OTP with expiration (5 minutes)
     otpStore.set(email, {
       otp: otp,
@@ -192,7 +192,7 @@ const verifyOTP = async (req, res) => {
     }
 
     const storedData = otpStore.get(email);
-    
+
     if (!storedData) {
       return res.json({
         success: false,
@@ -337,7 +337,7 @@ const resendOTP = async (req, res) => {
 
     // Generate new OTP
     const otp = crypto.randomInt(100000, 999999).toString();
-    
+
     // Store new OTP
     otpStore.set(email, {
       otp: otp,
@@ -402,13 +402,13 @@ const getProfile = async (req, res) => {
     });
   }
 };
-    
+
 const updateProfile = async (req, res) => {
   try {
     const userId = req.user.id; // get userId from auth middleware
     const { name, phone, address, dob, gender } = req.body;
     const imageFile = req.file;
-    
+
     if (!name || !phone || !dob || !gender) {
       return res.json({
         success: false,
@@ -435,11 +435,19 @@ const updateProfile = async (req, res) => {
       }
     }
 
-    // Upload image if present
+    // Upload image if present (using buffer for serverless/Vercel compatibility)
     if (imageFile) {
-      const imageUpload = await cloudinary.uploader.upload(imageFile.path, {
-        resource_type: 'image',
+      const imageUploadPromise = new Promise((resolve, reject) => {
+        const uploadStream = cloudinary.uploader.upload_stream(
+          { resource_type: 'image' },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        );
+        uploadStream.end(imageFile.buffer);
       });
+      const imageUpload = await imageUploadPromise;
       updatedFields.image = imageUpload.secure_url;
     }
 
@@ -500,22 +508,23 @@ const BookAppointment = async (req, res) => {
   }
 };
 
-const ListAppointment = async (req,res) => {
-  try{
+const ListAppointment = async (req, res) => {
+  try {
     const userId = req.user.id
-    const appointments = await appointmentModel.find({userId})
+    const appointments = await appointmentModel.find({ userId })
     res.json({
-      success:true,
+      success: true,
       appointments
-    })}
-    catch(error){
-      console.log(error);
-      res.json({
-        success:false,
-        message:error.message
-      })  
-      
-    }
+    })
+  }
+  catch (error) {
+    console.log(error);
+    res.json({
+      success: false,
+      message: error.message
+    })
+
+  }
 }
 
 const cancelAppointment = async (req, res) => {
@@ -613,7 +622,7 @@ const confirmPayment = async (req, res) => {
 
     // Retrieve payment intent from Stripe
     const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
-    
+
     if (paymentIntent.status === 'succeeded') {
       // Update appointment as paid
       await appointmentModel.findByIdAndUpdate(appointmentId, {
@@ -647,7 +656,7 @@ const confirmPayment = async (req, res) => {
 const stripeWebhook = async (req, res) => {
   const sig = req.headers['stripe-signature'];
   const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  
+
   let event;
 
   try {
@@ -662,7 +671,7 @@ const stripeWebhook = async (req, res) => {
     case 'payment_intent.succeeded':
       const paymentIntent = event.data.object;
       const appointmentId = paymentIntent.metadata.appointmentId;
-      
+
       // Update appointment status
       await appointmentModel.findByIdAndUpdate(appointmentId, {
         payment: true,
@@ -670,15 +679,15 @@ const stripeWebhook = async (req, res) => {
         paymentDate: new Date(),
         transactionId: paymentIntent.id
       });
-      
+
       console.log('Payment succeeded for appointment:', appointmentId);
       break;
-      
+
     case 'payment_intent.payment_failed':
       const failedPayment = event.data.object;
       console.log('Payment failed:', failedPayment.id);
       break;
-      
+
     default:
       console.log(`Unhandled event type ${event.type}`);
   }
@@ -693,7 +702,7 @@ const getPaymentStatus = async (req, res) => {
     const { appointmentId } = req.params;
 
     const appointment = await appointmentModel.findById(appointmentId);
-    
+
     if (!appointment) {
       return res.json({ success: false, message: "Appointment not found" });
     }
@@ -733,13 +742,13 @@ const setAppointmentMode = async (req, res) => {
   }
 }
 
-export { 
-  registerUser, 
-  loginUser, 
-  getProfile, 
-  updateProfile, 
-  BookAppointment, 
-  ListAppointment, 
+export {
+  registerUser,
+  loginUser,
+  getProfile,
+  updateProfile,
+  BookAppointment,
+  ListAppointment,
   cancelAppointment,
   createPaymentIntent,
   confirmPayment,
